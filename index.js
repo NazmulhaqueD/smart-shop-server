@@ -27,6 +27,7 @@ async function run() {
 
         const database = client.db('smartShop');
         const productsCollection = database.collection('products');
+        const cartItemsCollection = database.collection('cartItems');
 
         app.get('/products', async (req, res) => {
             const { category, name, id } = req.query;
@@ -49,9 +50,20 @@ async function run() {
             const result = await productsCollection.findOne({ _id: new ObjectId(id) });
             res.send(result);
         });
-        app.post('/products', async (req, res) => {
-            const data = req.body;
-            const result = await productsCollection.insertOne(data);
+        app.get('/cartItems', async (req, res) => {
+            const email = req.query.email;
+            const filter = {};
+            if (email) {
+                filter.userEmail = email;
+            }
+            const result = await cartItemsCollection.find(filter).toArray();
+            res.send(result);
+        })
+
+
+        app.post('/addToCart', async (req, res) => {
+            const cartItem = req.body;
+            const result = await cartItemsCollection.insertOne(cartItem);
             res.send(result);
         })
 
