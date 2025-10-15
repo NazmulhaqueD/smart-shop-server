@@ -67,11 +67,11 @@ async function run() {
       const result = await usersCollection.insertOne(userData);
       res.send(result);
     });
-       // ✅ Get all users (optional)
-    app.get('/users', async (req, res) => {
-      const users = await usersCollection.find().toArray();
-      res.send(users);
-    });
+       // ✅ Get all users
+    // app.get('/users', async (req, res) => {
+    //   const users = await usersCollection.find().toArray();
+    //   res.send(users);
+    // });
 
     // ✅ Get single user by email or id
     app.get('/users/:email', async (req, res) => {
