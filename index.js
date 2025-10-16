@@ -1,14 +1,23 @@
-const express = require('express')
-require('dotenv').config();
-const cors = require('cors');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express()
-const port = 5000
- 
+const express = require("express");
+require("dotenv").config();
+const cors = require("cors");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const SSLCommerzPayment = require("sslcommerz-lts"); // install: npm install sslcommerz-lts
 
+const app = express();
+const port = process.env.PORT || 5000;
+
+// ✅ Middleware
 app.use(cors());
 app.use(express.json());
 
+// ✅ SSLCommerz credentials
+const store_id = process.env.STORE_ID || "your_store_id";
+const store_passwd = process.env.STORE_PASS || "your_store_pass";
+const is_live = false; // false = sandbox mode, true = production
+
+// ✅ MongoDB URI
+// ✅ MongoDB URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.tkn4tqy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const client = new MongoClient(uri, {
@@ -20,114 +29,104 @@ const client = new MongoClient(uri, {
 });
 
 async function run() {
-    try {
+  try {
+    // ✅ Database and Collections
+    const database = client.db("smartShop");
+    const productsCollection = database.collection("products");
+    const usersCollection = database.collection("users");
+    const ordersCollection = database.collection("orders");
 
-        const database = client.db('smartShop');
-        const productsCollection = database.collection('products');
-        const usersCollection=database.collection("users")
+    // ---------------------------------------------------
+    // ✅ PRODUCT ROUTES
+    // ---------------------------------------------------
+    app.get("/products", async (req, res) => {
+      const { category, name, id } = req.query;
+      const filter = {};
 
-        app.get('/products', async (req, res) => {
-            const { category, name, id } = req.query;
-            const filter = {};
+      if (category) filter.category = category;
+      if (name) filter.name = { $regex: name, $options: "i" };
+      if (id) filter._id = new ObjectId(id);
 
-            if (category) {
-                filter.category = category;
-            }
-            if (name) {
-                filter.name = { $regex: name, $options: 'i' };
-            }
-            if (id) {
-                filter._id = new ObjectId(id);
-            }
-            const result = await productsCollection.find(filter).toArray();
-            res.send(result);
-        })
-        app.get('/products/:id', async (req, res) => {
-            const { id } = req.params;  // params থেকে id নিলাম
-            const result = await productsCollection.findOne({ _id: new ObjectId(id) });
-            res.send(result);
-        });
-        app.post('/products', async (req, res) => {
-            const data = req.body;
-            const result = await productsCollection.insertOne(data);
-            res.send(result);
-        })
-           app.post('/users', async (req, res) => {
+      const result = await productsCollection.find(filter).toArray();
+      res.send(result);
+    });
+
+    app.get("/products/:id", async (req, res) => {
+      const { id } = req.params;
+      const result = await productsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result);
+    });
+
+    app.post("/products", async (req, res) => {
+      const data = req.body;
+      const result = await productsCollection.insertOne(data);
+      res.send(result);
+    });
+
+    // ---------------------------------------------------
+    // ✅ USER ROUTES
+    // ---------------------------------------------------
+    app.post("/users", async (req, res) => {
       const userData = req.body;
-
-      // Optional: check if user already exists by email
-      const existingUser = await usersCollection.findOne({ email: userData.email });
+      const existingUser = await usersCollection.findOne({
+        email: userData.email,
+      });
       if (existingUser) {
-        return res.status(409).send({ message: 'User already exists' });
+        return res.status(409).send({ message: "User already exists" });
       }
-
       const result = await usersCollection.insertOne(userData);
       res.send(result);
     });
-       // ✅ Get all users
-    // app.get('/users', async (req, res) => {
-    //   const users = await usersCollection.find().toArray();
-    //   res.send(users);
-    // });
 
-    // ✅ Get single user by email or id
-    app.get('/users/:email', async (req, res) => {
+    app.get("/users/:email", async (req, res) => {
       const email = req.params.email;
       const user = await usersCollection.findOne({ email });
       res.send(user);
     });
 
     app.put("/users/:email", async (req, res) => {
-  const email = req.params.email;
-  const updatedData = req.body;
-  const result = await usersCollection.updateOne(
-    { email },
-    { $set: updatedData }
-  );
-  res.send(result);
-});
+      const email = req.params.email;
+      const updatedData = req.body;
+      const result = await usersCollection.updateOne(
+        { email },
+        { $set: updatedData }
+      );
+      res.send(result);
+    });
 
-// Get a user's role by email
-app.get("/users/:email/role", async (req, res) => {
-  const email = req.params.email;
-  try {
-    const user = await usersCollection.findOne({ email });
-    if (!user) return res.status(404).send({ message: "User not found" });
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      try {
+        const user = await usersCollection.findOne({ email });
+        if (!user)
+          return res.status(404).send({ message: "User not found" });
+        res.send({ role: user.role });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
 
-    res.send({ role: user.role });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
-
-        // await client.db("admin").command({ ping: 1 });
-        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
-    }
-
-async function run() {
-  try {
-    const database = client.db("smartShop");
-    const productsCollection = database.collection("products");
-    const ordersCollection = database.collection("orders");
-
+    // ---------------------------------------------------
+    // ✅ PAYMENT + ORDER ROUTES (SSLCommerz Integration)
+    // ---------------------------------------------------
     app.post("/orders", async (req, res) => {
-      // console.log(req.body);
       const tran_id = new ObjectId().toString();
       const product = await productsCollection.findOne({
         _id: new ObjectId(req.body.productId),
       });
-       if (!product) {
+
+      if (!product) {
         return res.status(404).send({ message: "Product not found" });
       }
+
       const order = req.body;
-      //   console.log(order)
-      //   console.log(product);
       const data = {
         total_amount: order.totalAmount,
         currency: "BDT",
-        tran_id: tran_id, // use unique tran_id for each api call
+        tran_id: tran_id,
         success_url: `http://localhost:5000/payment/success/${tran_id}`,
         fail_url: `http://localhost:5000/payment/fail/${tran_id}`,
         cancel_url: "http://localhost:3030/cancel",
@@ -154,10 +153,9 @@ async function run() {
         ship_postcode: 1000,
         ship_country: "Bangladesh",
       };
-      // console.log(data);
+
       const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
       sslcz.init(data).then((apiResponse) => {
-        // Redirect the user to payment gateway
         let GatewayPageURL = apiResponse.GatewayPageURL;
         res.send({ url: GatewayPageURL });
 
@@ -166,32 +164,23 @@ async function run() {
           paidStatus: false,
           tranjectionId: tran_id,
         };
-        const result = ordersCollection.insertOne(finalOrder);
-
-        console.log("Redirecting to: ", GatewayPageURL);
+        ordersCollection.insertOne(finalOrder);
+        console.log("Redirecting to:", GatewayPageURL);
       });
     });
 
     app.post("/payment/success/:tranId", async (req, res) => {
-      console.log(req.params.tranId);
       const result = await ordersCollection.updateOne(
-        {
-          tranjectionId: req.params.tranId,
-        },
-        {
-          $set: {
-            paidStatus: true,
-          },
-        }
+        { tranjectionId: req.params.tranId },
+        { $set: { paidStatus: true } }
       );
-      console.log(result);
       if (result.modifiedCount > 0) {
         res.redirect(`http://localhost:3000/payment/paymentSuccess`);
       }
     });
 
     app.post("/payment/fail/:tranId", async (req, res) => {
-      const result =await ordersCollection.deleteOne({
+      const result = await ordersCollection.deleteOne({
         tranjectionId: req.params.tranId,
       });
       if (result.deletedCount) {
@@ -199,49 +188,22 @@ async function run() {
       }
     });
 
-    app.get("/products", async (req, res) => {
-      const { category, name, id } = req.query;
-      const filter = {};
-
-      if (category) {
-        filter.category = category;
-      }
-      if (name) {
-        filter.name = { $regex: name, $options: "i" };
-      }
-      if (id) {
-        filter._id = new ObjectId(id);
-      }
-      const result = await productsCollection.find(filter).toArray();
-      res.send(result);
-    });
-    app.get("/products/:id", async (req, res) => {
-      const { id } = req.params; // params থেকে id নিলাম
-      const result = await productsCollection.findOne({
-        _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
-    app.post("/products", async (req, res) => {
-      const data = req.body;
-      const result = await productsCollection.insertOne(data);
-      res.send(result);
-      // console.log(data);
-    });
-
-    // await client.db("admin").command({ ping: 1 });
-    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log("✅ MongoDB connected successfully!");
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    // await client.close(); // keep open for connection reuse
   }
 }
+
 run().catch(console.dir);
 
+// ---------------------------------------------------
+// ✅ ROOT ROUTE
+// ---------------------------------------------------
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
+// ✅ Start Server
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+  console.log(`✅ Server running on port ${port}`);
 });
