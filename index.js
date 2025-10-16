@@ -143,7 +143,7 @@ async function run() {
       const data = req.body;
       const result = await productsCollection.insertOne(data);
       res.send(result);
-      console.log(data);
+      // console.log(data);
     });
 
     // await client.db("admin").command({ ping: 1 });
