@@ -20,12 +20,13 @@ const is_live = false; // false = sandbox mode, true = production
 // ✅ MongoDB URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.tkn4tqy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
+
 const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    }
 });
 
 async function run() {
@@ -35,10 +36,8 @@ async function run() {
     const productsCollection = database.collection("products");
     const usersCollection = database.collection("users");
     const ordersCollection = database.collection("orders");
-
-    // ---------------------------------------------------
-    // ✅ PRODUCT ROUTES
-    // ---------------------------------------------------
+    const cartItemsCollection = database.collection('cartItems');
+    
     app.get("/products", async (req, res) => {
       const { category, name, id } = req.query;
       const filter = {};
@@ -65,9 +64,6 @@ async function run() {
       res.send(result);
     });
 
-    // ---------------------------------------------------
-    // ✅ USER ROUTES
-    // ---------------------------------------------------
     app.post("/users", async (req, res) => {
       const userData = req.body;
       const existingUser = await usersCollection.findOne({
@@ -109,9 +105,7 @@ async function run() {
       }
     });
 
-    // ---------------------------------------------------
-    // ✅ PAYMENT + ORDER ROUTES (SSLCommerz Integration)
-    // ---------------------------------------------------
+// ✅ Create Order and Initiate Payment
     app.post("/orders", async (req, res) => {
       const tran_id = new ObjectId().toString();
       const product = await productsCollection.findOne({
@@ -187,23 +181,44 @@ async function run() {
         res.redirect(`http://localhost:3000/payment/paymentFail`);
       }
     });
+        app.get('/cartItems', async (req, res) => {
+            const email = req.query.email;
+            const filter = {};
+            if (email) {
+                filter.userEmail = email;
+            }
+            const result = await cartItemsCollection.find(filter).toArray();
+            res.send(result);
+        })
 
+
+        app.post('/addToCart', async (req, res) => {
+            const cartItem = req.body;
+            const result = await cartItemsCollection.insertOne(cartItem);
+            res.send(result);
+        })
+        app.delete("/cartItems/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+
+            const result = await cartItemsCollection.deleteOne(query);
+            res.send(result);
+        });
     console.log("✅ MongoDB connected successfully!");
-  } finally {
-    // await client.close(); // keep open for connection reuse
   }
+    finally {
+        // Ensures that the client will close when you finish/error
+        // await client.close();
+    }
 }
 
 run().catch(console.dir);
 
-// ---------------------------------------------------
-// ✅ ROOT ROUTE
-// ---------------------------------------------------
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
 // ✅ Start Server
 app.listen(port, () => {
-  console.log(`✅ Server running on port ${port}`);
-});
+    console.log(`Example app listening on port ${port}`)
+})
