@@ -28,6 +28,7 @@ async function run() {
     const database = client.db("smartShop");
     const productsCollection = database.collection("products");
     const ordersCollection = database.collection("orders");
+    // this is routrs
 
     app.post("/orders", async (req, res) => {
       // console.log(req.body);
