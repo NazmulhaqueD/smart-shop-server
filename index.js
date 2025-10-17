@@ -159,6 +159,47 @@ async function run() {
             }
         });
 
+  app.get("/cartItems/:email", async (req, res) => {
+  const { email } = req.params;
+
+  try {
+    // find all cart items for the given user email
+    const userCart = await cartItemsCollection
+      .find({ userEmail: email })
+      .toArray();
+
+    if (!userCart.length) {
+      return res.status(404).send({ message: "No cart items found for this email" });
+    }
+
+    res.send(userCart);
+  } catch (error) {
+    console.error("Error fetching cart items:", error);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+//get order by using email
+    app.get("/orders/:email", async (req, res) => {
+      const { email } = req.params;
+
+      try {
+        const orders = await ordersCollection
+          .find({ orderUser: email })
+          .sort({ orderDate: -1 })
+          .toArray();
+
+        if (!orders.length) {
+          return res.status(404).send({ message: "No orders found for this user" });
+        }
+
+        res.send(orders);
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+
         //as
         // ✅ Create Order and Initiate Payment
         // app.post("/orders", async (req, res) => {
