@@ -95,11 +95,22 @@ async function run() {
             res.send(result);
         });
 
-        app.get("/users/:email", async (req, res) => {
-            const email = req.params.email;
-            const user = await usersCollection.findOne({ email });
-            res.send(user);
+        app.get("/users", async (req, res) => {
+            const { email, searchEmail } = req.query; 
+
+            if (email) {
+                const user = await usersCollection.findOne({ email });
+                return res.send(user);
+            }
+
+            const filter = {};
+            if (searchEmail) {
+                filter.email = { $regex: searchEmail, $options: "i" };
+            }
+            const users = await usersCollection.find(filter).toArray();
+            res.send(users);
         });
+
 
         app.put("/users/:email", async (req, res) => {
             const email = req.params.email;
