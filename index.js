@@ -45,7 +45,7 @@ async function run() {
             if (category) filter.category = category;
             if (name) filter.name = { $regex: name, $options: "i" };
             if (id) filter._id = new ObjectId(id);
-            if (sellerEmail) filter.sellerEmail = sellerEmail; 
+            if (sellerEmail) filter.sellerEmail = sellerEmail;
 
             const result = await productsCollection.find(filter).toArray();
             res.send(result);
@@ -62,9 +62,26 @@ async function run() {
 
         app.post("/products", async (req, res) => {
             const data = req.body;
-            const result = await productsCollection.insertOne(data);
-            res.send(result);
+
+            if (!data.name || !data.price || !data.category) {
+                return res.status(400).send({ message: "Required fields missing" });
+            }
+            data.sellerEmail = data.sellerEmail || data.email;
+            if (!data.image) {
+                data.image = "https://via.placeholder.com/150";
+            }
+
+            data.createdAt = new Date();
+
+            try {
+                const result = await productsCollection.insertOne(data);
+                res.send(result);
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: "Server error" });
+            }
         });
+
 
         app.post("/users", async (req, res) => {
             const userData = req.body;
@@ -107,6 +124,7 @@ async function run() {
             }
         });
 
+        //as
         // ✅ Create Order and Initiate Payment
         // app.post("/orders", async (req, res) => {
         //   const tran_id = new ObjectId().toString();
