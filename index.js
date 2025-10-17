@@ -96,7 +96,7 @@ async function run() {
         });
 
         app.get("/users", async (req, res) => {
-            const { email, searchEmail } = req.query; 
+            const { email, searchEmail } = req.query;
 
             if (email) {
                 const user = await usersCollection.findOne({ email });
@@ -110,6 +110,30 @@ async function run() {
             const users = await usersCollection.find(filter).toArray();
             res.send(users);
         });
+
+        app.get("/orders", async (req, res) => {
+            const { lastOrder, orderedBy } = req.query;
+
+            if (lastOrder) {
+                const result = await ordersCollection
+                    .find({ orderUser: lastOrder })
+                    .sort({ _id: -1 })
+                    .limit(1)
+                    .toArray();
+
+                return res.send(result[0] || null);
+            }
+
+            const filter = {};
+            if (orderedBy) {
+                filter.orderUser = orderedBy;
+            }
+
+            const orders = await ordersCollection.find(filter).sort({ _id: -1 }).toArray();
+            res.send(orders);
+        });
+
+
 
 
         app.put("/users/:email", async (req, res) => {
