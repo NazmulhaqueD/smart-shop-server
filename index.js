@@ -39,16 +39,18 @@ async function run() {
         const cartItemsCollection = database.collection('cartItems');
 
         app.get("/products", async (req, res) => {
-            const { category, name, id } = req.query;
+            const { category, name, id, sellerEmail } = req.query;
             const filter = {};
 
             if (category) filter.category = category;
             if (name) filter.name = { $regex: name, $options: "i" };
             if (id) filter._id = new ObjectId(id);
+            if (sellerEmail) filter.sellerEmail = sellerEmail; 
 
             const result = await productsCollection.find(filter).toArray();
             res.send(result);
         });
+
 
         app.get("/products/:id", async (req, res) => {
             const { id } = req.params;
