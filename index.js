@@ -108,62 +108,62 @@ async function run() {
         });
 
         // ✅ Create Order and Initiate Payment
-        app.post("/orders", async (req, res) => {
-            const tran_id = new ObjectId().toString();
-            const product = await productsCollection.findOne({
-                _id: new ObjectId(req.body.productId),
-            });
+        // app.post("/orders", async (req, res) => {
+        //   const tran_id = new ObjectId().toString();
+        //   const product = await productsCollection.findOne({
+        //     _id: new ObjectId(req.body.productId),
+        //   });
 
-            if (!product) {
-                return res.status(404).send({ message: "Product not found" });
-            }
+        //   if (!product) {
+        //     return res.status(404).send({ message: "Product not found" });
+        //   }
 
-            const order = req.body;
-            const data = {
-                total_amount: order.totalAmount,
-                currency: "BDT",
-                tran_id: tran_id,
-                success_url: `http://localhost:5000/payment/success/${tran_id}`,
-                fail_url: `http://localhost:5000/payment/fail/${tran_id}`,
-                cancel_url: "http://localhost:3030/cancel",
-                ipn_url: "http://localhost:3030/ipn",
-                shipping_method: "Courier",
-                product_name: "Computer.",
-                product_category: "Electronic",
-                product_profile: "general",
-                cus_name: order.name,
-                cus_email: "customer@example.com",
-                cus_add1: order.address,
-                cus_add2: "Dhaka",
-                cus_city: "Dhaka",
-                cus_state: "Dhaka",
-                cus_postcode: "1000",
-                cus_country: "Bangladesh",
-                cus_phone: "01711111111",
-                cus_fax: "01711111111",
-                ship_name: "Customer Name",
-                ship_add1: "Dhaka",
-                ship_add2: "Dhaka",
-                ship_city: "Dhaka",
-                ship_state: "Dhaka",
-                ship_postcode: 1000,
-                ship_country: "Bangladesh",
-            };
+        //   const order = req.body;
+        //   const data = {
+        //     total_amount: order.totalAmount,
+        //     currency: "BDT",
+        //     tran_id: tran_id,
+        //     success_url: `http://localhost:5000/payment/success/${tran_id}`,
+        //     fail_url: `http://localhost:5000/payment/fail/${tran_id}`,
+        //     cancel_url: "http://localhost:3030/cancel",
+        //     ipn_url: "http://localhost:3030/ipn",
+        //     shipping_method: "Courier",
+        //     product_name: "Computer.",
+        //     product_category: "Electronic",
+        //     product_profile: "general",
+        //     cus_name: order.name,
+        //     cus_email: "customer@example.com",
+        //     cus_add1: order.address,
+        //     cus_add2: "Dhaka",
+        //     cus_city: "Dhaka",
+        //     cus_state: "Dhaka",
+        //     cus_postcode: "1000",
+        //     cus_country: "Bangladesh",
+        //     cus_phone: "01711111111",
+        //     cus_fax: "01711111111",
+        //     ship_name: "Customer Name",
+        //     ship_add1: "Dhaka",
+        //     ship_add2: "Dhaka",
+        //     ship_city: "Dhaka",
+        //     ship_state: "Dhaka",
+        //     ship_postcode: 1000,
+        //     ship_country: "Bangladesh",
+        //   };
 
-            const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
-            sslcz.init(data).then((apiResponse) => {
-                let GatewayPageURL = apiResponse.GatewayPageURL;
-                res.send({ url: GatewayPageURL });
+        //   const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+        //   sslcz.init(data).then((apiResponse) => {
+        //     let GatewayPageURL = apiResponse.GatewayPageURL;
+        //     res.send({ url: GatewayPageURL });
 
-                const finalOrder = {
-                    product,
-                    paidStatus: false,
-                    tranjectionId: tran_id,
-                };
-                ordersCollection.insertOne(finalOrder);
-                console.log("Redirecting to:", GatewayPageURL);
-            });
-        });
+        //     const finalOrder = {
+        //       product,
+        //       paidStatus: false,
+        //       tranjectionId: tran_id,
+        //     };
+        //     ordersCollection.insertOne(finalOrder);
+        //     console.log("Redirecting to:", GatewayPageURL);
+        //   });
+        // });
 
         app.post("/payment/success/:tranId", async (req, res) => {
             const result = await ordersCollection.updateOne(
@@ -183,6 +183,13 @@ async function run() {
                 res.redirect(`http://localhost:3000/payment/paymentFail`);
             }
         });
+
+        app.post('/orders', async (req, res) => {
+            const orderData = req.body;
+            const result = await ordersCollection.insertOne(orderData);
+            res.send(result);
+        })
+
         app.get('/cartItems', async (req, res) => {
             const email = req.query.email;
             const filter = {};
