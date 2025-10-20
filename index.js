@@ -259,8 +259,9 @@ async function run() {
 
         app.patch("/users/:id", async (req, res) => {
             const id = req.params.id;
-            const { role } = req.body; 
+            const { role } = req.body;
             console.log(role);
+
 
             const query = { _id: new ObjectId(id) };
             const updateDoc = {
