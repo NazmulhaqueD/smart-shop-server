@@ -38,10 +38,41 @@ async function run() {
         const ordersCollection = database.collection("orders");
         const cartItemsCollection = database.collection('cartItems');
 
-        app.get("/products", async (req, res) => {
-            const { category, name, id } = req.query;
-            const filter = {};
+        app.get("/users", async (req, res) => {
+            const { email, searchEmail } = req.query;
 
+            if (email) {
+                const user = await usersCollection.findOne({ email });
+                return res.send(user);
+            }
+
+            const filter = {};
+            if (searchEmail) {
+                filter.email = { $regex: searchEmail, $options: "i" };
+            }
+            const users = await usersCollection.find(filter).toArray();
+            res.send(users);
+        });
+
+        app.get("/users/:email/role", async (req, res) => {
+            const email = req.params.email;
+            try {
+                const user = await usersCollection.findOne({ email });
+                if (!user)
+                    return res.status(404).send({ message: "User not found" });
+                res.send({ role: user.role });
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: "Server error" });
+            }
+        });
+
+        app.get("/products", async (req, res) => {
+            const { category, name, id, sellerEmail } = req.query;
+            const filter = {};
+            if (sellerEmail) {
+                filter.sellerEmail = sellerEmail;
+            }
             if (category) filter.category = category;
             if (name) filter.name = { $regex: name, $options: "i" };
             if (id) filter._id = new ObjectId(id);
@@ -58,39 +89,15 @@ async function run() {
             res.send(result);
         });
 
-        app.post("/products", async (req, res) => {
-            const data = req.body;
-            const result = await productsCollection.insertOne(data);
-            res.send(result);
-        });
-
-        app.post("/users", async (req, res) => {
-            const userData = req.body;
-            const existingUser = await usersCollection.findOne({
-                email: userData.email,
-            });
-            if (existingUser) {
-                return res.status(409).send({ message: "User already exists" });
-            }
-            const result = await usersCollection.insertOne(userData);
-            res.send(result);
-        });
-
-        app.get("/users", async (req, res) => {
-            const { email, searchEmail } = req.query;
-
-            if (email) {
-                const user = await usersCollection.findOne({ email });
-                return res.send(user);
-            }
-
+        app.get('/cartItems', async (req, res) => {
+            const email = req.query.email;
             const filter = {};
-            if (searchEmail) {
-                filter.email = { $regex: searchEmail, $options: "i" };
+            if (email) {
+                filter.userEmail = email;
             }
-            const users = await usersCollection.find(filter).toArray();
-            res.send(users);
-        });
+            const result = await cartItemsCollection.find(filter).toArray();
+            res.send(result);
+        })
 
         app.get("/orders", async (req, res) => {
             const { lastOrder, orderedBy } = req.query;
@@ -117,28 +124,35 @@ async function run() {
 
 
 
-        app.put("/users/:email", async (req, res) => {
-            const email = req.params.email;
-            const updatedData = req.body;
-            const result = await usersCollection.updateOne(
-                { email },
-                { $set: updatedData }
-            );
+        app.post("/users", async (req, res) => {
+            const userData = req.body;
+            const existingUser = await usersCollection.findOne({
+                email: userData.email,
+            });
+            if (existingUser) {
+                return res.status(409).send({ message: "User already exists" });
+            }
+            const result = await usersCollection.insertOne(userData);
             res.send(result);
         });
 
-        app.get("/users/:email/role", async (req, res) => {
-            const email = req.params.email;
-            try {
-                const user = await usersCollection.findOne({ email });
-                if (!user)
-                    return res.status(404).send({ message: "User not found" });
-                res.send({ role: user.role });
-            } catch (err) {
-                console.error(err);
-                res.status(500).send({ message: "Server error" });
-            }
+        app.post("/products", async (req, res) => {
+            const data = req.body;
+            const result = await productsCollection.insertOne(data);
+            res.send(result);
         });
+
+        app.post('/orders', async (req, res) => {
+            const orderData = req.body;
+            const result = await ordersCollection.insertOne(orderData);
+            res.send(result);
+        })
+
+        app.post('/addToCart', async (req, res) => {
+            const cartItem = req.body;
+            const result = await cartItemsCollection.insertOne(cartItem);
+            res.send(result);
+        })
 
         // ✅ Create Order and Initiate Payment
         // app.post("/orders", async (req, res) => {
@@ -217,28 +231,49 @@ async function run() {
             }
         });
 
-        app.post('/orders', async (req, res) => {
-            const orderData = req.body;
-            const result = await ordersCollection.insertOne(orderData);
-            res.send(result);
-        })
 
-        app.get('/cartItems', async (req, res) => {
-            const email = req.query.email;
-            const filter = {};
-            if (email) {
-                filter.userEmail = email;
+
+
+
+        app.put("/users/:email", async (req, res) => {
+            const email = req.params.email;
+            const updatedData = req.body;
+            const result = await usersCollection.updateOne(
+                { email },
+                { $set: updatedData }
+            );
+            res.send(result);
+        });
+
+        app.put("/products/:id", async (req, res) => {
+            const id = req.params.id;
+            const data = req.body;
+            const query = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: data,
             }
-            const result = await cartItemsCollection.find(filter).toArray();
+
+            const result = await productsCollection.updateOne(query, updatedDoc);
             res.send(result);
         })
 
+        app.patch("/users/:id", async (req, res) => {
+            const id = req.params.id;
+            const { role } = req.body; 
+            console.log(role);
 
-        app.post('/addToCart', async (req, res) => {
-            const cartItem = req.body;
-            const result = await cartItemsCollection.insertOne(cartItem);
+            const query = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: { role },
+            };
+
+            const result = await usersCollection.updateOne(query, updateDoc);
             res.send(result);
-        })
+        });
+
+
+
+
         app.delete("/cartItems/:id", async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
@@ -251,6 +286,13 @@ async function run() {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
             const result = await usersCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.delete("/products/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await productsCollection.deleteOne(query);
             res.send(result);
         });
 
