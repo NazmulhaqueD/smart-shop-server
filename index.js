@@ -37,6 +37,7 @@ async function run() {
         const usersCollection = database.collection("users");
         const ordersCollection = database.collection("orders");
         const cartItemsCollection = database.collection('cartItems');
+        const trackingsCollection = database.collection("trackings");
 
         app.get("/users", async (req, res) => {
             const { email, searchEmail } = req.query;
@@ -145,6 +146,11 @@ async function run() {
         app.post('/orders', async (req, res) => {
             const orderData = req.body;
             const result = await ordersCollection.insertOne(orderData);
+            res.send(result);
+        })
+        app.post('/trackings', async (req, res) => {
+            const orderData = req.body;
+            const result = await trackingsCollection.insertOne(orderData);
             res.send(result);
         })
 
@@ -271,6 +277,29 @@ async function run() {
             const result = await usersCollection.updateOne(query, updateDoc);
             res.send(result);
         });
+
+        app.patch("/gemPoints", async (req, res) => {
+            const { email, points } = req.body;
+            console.log(email, points);
+            
+            try {
+                const user = await usersCollection.findOne({ email });
+                if (!user) return res.status(404).send({ error: "User not found" });
+
+                const newGemPoints = (user.gemPoints || 0) + points;
+
+                const result = await usersCollection.updateOne(
+                    { email },
+                    { $set: { gemPoints: newGemPoints } }
+                );
+
+                res.send(result);
+            } catch (err) {
+                res.status(500).send({ error: "Something went wrong" });
+            }
+        });
+
+
 
 
 
