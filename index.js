@@ -296,6 +296,12 @@ async function run() {
             const result = await productsCollection.deleteOne(query);
             res.send(result);
         });
+        app.delete("/orders/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await ordersCollection.deleteOne(query);
+            res.send(result);
+        });
 
 
         console.log("✅ MongoDB connected successfully!");
