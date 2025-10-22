@@ -37,6 +37,7 @@ async function run() {
         const usersCollection = database.collection("users");
         const ordersCollection = database.collection("orders");
         const cartItemsCollection = database.collection('cartItems');
+        const trackingsCollection= database.collection("trackings");
 
         app.get("/users", async (req, res) => {
             const { email, searchEmail } = req.query;
@@ -145,6 +146,11 @@ async function run() {
         app.post('/orders', async (req, res) => {
             const orderData = req.body;
             const result = await ordersCollection.insertOne(orderData);
+            res.send(result);
+        })
+        app.post('/trackings', async (req, res) => {
+            const orderData = req.body;
+            const result = await trackingsCollection.insertOne(orderData);
             res.send(result);
         })
 
