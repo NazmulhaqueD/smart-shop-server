@@ -145,6 +145,29 @@ async function run() {
             res.send(orders);
         });
 
+        // Route: Get orders by seller email
+        app.get("/orders/seller/:email", async (req, res) => {
+            try {
+                const sellerEmail = req.params.email;
+
+                // Find all orders where items array contains this sellerEmail
+                const orders = await ordersCollection
+                    .find({ "items": { $elemMatch: { sellerEmail } } })
+                    .toArray();
+
+                // Filter items so seller sees only his own products
+                const filteredOrders = orders.map(order => ({
+                    ...order,
+                    items: order.items.filter(item => item.sellerEmail === sellerEmail),
+                }));
+
+                res.send(filteredOrders);
+            } catch (error) {
+                console.error("Error fetching seller orders:", error);
+                res.status(500).json({ message: "Internal Server Error" });
+            }
+        });
+
 
 
 
@@ -280,7 +303,7 @@ async function run() {
 
             const data = req.body;
             delete data._id;
-            
+
             const query = { _id: new ObjectId(id) };
             const updatedDoc = {
                 $set: data,
