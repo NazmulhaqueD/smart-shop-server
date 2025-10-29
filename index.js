@@ -89,6 +89,22 @@ async function run() {
             });
             res.send(result);
         });
+        app.get("/trackings", async (req, res) => {
+            const { orderId } = req.query;
+            try {
+                if (orderId) {
+                    trackings = await trackingsCollection.findOne({ orderId });
+                    if (!trackings) return res.status(404).send({ error: "Tracking not found" });
+                } else {
+                    trackings = await trackingsCollection.find({}).toArray();
+                }
+
+                res.send(trackings);
+            } catch (err) {
+                res.status(500).send({ error: "Something went wrong" });
+            }
+        });
+
 
         app.get('/cartItems', async (req, res) => {
             const email = req.query.email;
@@ -100,8 +116,10 @@ async function run() {
             res.send(result);
         })
 
-        app.get("/orders", async (req, res) => {
+        app.get("/orders/:id", async (req, res) => {
             const { lastOrder, orderedBy } = req.query;
+            const id = req.params.id;
+
 
             if (lastOrder) {
                 const result = await ordersCollection
@@ -114,12 +132,40 @@ async function run() {
             }
 
             const filter = {};
+            if (id) {
+                const result = await ordersCollection.findOne({ _id: new ObjectId(id) });
+                res.send(result);
+                return;
+            }
             if (orderedBy) {
                 filter.orderUser = orderedBy;
             }
 
             const orders = await ordersCollection.find(filter).sort({ _id: -1 }).toArray();
             res.send(orders);
+        });
+
+        // Route: Get orders by seller email
+        app.get("/orders/seller/:email", async (req, res) => {
+            try {
+                const sellerEmail = req.params.email;
+
+                // Find all orders where items array contains this sellerEmail
+                const orders = await ordersCollection
+                    .find({ "items": { $elemMatch: { sellerEmail } } })
+                    .toArray();
+
+                // Filter items so seller sees only his own products
+                const filteredOrders = orders.map(order => ({
+                    ...order,
+                    items: order.items.filter(item => item.sellerEmail === sellerEmail),
+                }));
+
+                res.send(filteredOrders);
+            } catch (error) {
+                console.error("Error fetching seller orders:", error);
+                res.status(500).json({ message: "Internal Server Error" });
+            }
         });
 
 
@@ -253,7 +299,11 @@ async function run() {
 
         app.put("/products/:id", async (req, res) => {
             const id = req.params.id;
+            console.log(id);
+
             const data = req.body;
+            delete data._id;
+
             const query = { _id: new ObjectId(id) };
             const updatedDoc = {
                 $set: data,
@@ -281,7 +331,7 @@ async function run() {
         app.patch("/gemPoints", async (req, res) => {
             const { email, points } = req.body;
             console.log(email, points);
-            
+
             try {
                 const user = await usersCollection.findOne({ email });
                 if (!user) return res.status(404).send({ error: "User not found" });
