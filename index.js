@@ -313,6 +313,43 @@ async function run() {
             res.send(result);
         })
 
+        app.patch("/tracking/update/:orderId", async (req, res) => {
+            try {
+                const orderId = req.params.orderId;
+                const { stepTitle } = req.body;
+                console.log(orderId, stepTitle);
+
+
+                const filter = { orderId: orderId };
+
+                // update object
+                const update = {
+                    $set: {
+                        "steps.$[elem].done": true,
+                        "steps.$[elem].date": new Date(),
+                        currentStatus: stepTitle,
+                    },
+                };
+
+                const options = {
+                    arrayFilters: [{ "elem.title": stepTitle }],
+                };
+
+                const result = await trackingsCollection.updateOne(filter, update, options);
+
+                res.send(result);
+
+            } catch (error) {
+                console.error("Error updating tracking:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Internal Server Error",
+                });
+            }
+        });
+
+
+
         app.patch("/users/:id", async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
