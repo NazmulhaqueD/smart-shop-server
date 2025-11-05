@@ -1,247 +1,502 @@
-const express = require('express')
-require('dotenv').config();
-const cors = require('cors');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express()
-const port = 5000
- 
+const express = require("express");
+require("dotenv").config();
+const cors = require("cors");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const SSLCommerzPayment = require("sslcommerz-lts"); // install: npm install sslcommerz-lts
 
+const app = express();
+const port = process.env.PORT || 5000;
+
+// ✅ Middleware
 app.use(cors());
 app.use(express.json());
 
+// ✅ SSLCommerz credentials
+const store_id = process.env.STORE_ID || "your_store_id";
+const store_passwd = process.env.STORE_PASS || "your_store_pass";
+const is_live = false; // false = sandbox mode, true = production
+
+// ✅ MongoDB URI
+// ✅ MongoDB URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.tkn4tqy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
+
 const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    }
 });
 
 async function run() {
     try {
+        // ✅ Database and Collections
+        const database = client.db("smartShop");
+        const productsCollection = database.collection("products");
+        const usersCollection = database.collection("users");
+        const ordersCollection = database.collection("orders");
+        const cartItemsCollection = database.collection('cartItems');
+        const trackingsCollection = database.collection("trackings");
+        const supportIssueCollection = database.collection("supportIssue");
 
-        const database = client.db('smartShop');
-        const productsCollection = database.collection('products');
-        const usersCollection=database.collection("users")
+        app.get("/users", async (req, res) => {
+            const { email, searchEmail } = req.query;
 
-        app.get('/products', async (req, res) => {
-            const { category, name, id } = req.query;
+            if (email) {
+                const user = await usersCollection.findOne({ email });
+                return res.send(user);
+            }
+
             const filter = {};
+            if (searchEmail) {
+                filter.email = { $regex: searchEmail, $options: "i" };
+            }
+            const users = await usersCollection.find(filter).toArray();
+            res.send(users);
+        });
 
-            if (category) {
-                filter.category = category;
+        app.get("/users/:email/role", async (req, res) => {
+            const email = req.params.email;
+            try {
+                const user = await usersCollection.findOne({ email });
+                if (!user)
+                    return res.status(404).send({ message: "User not found" });
+                res.send({ role: user.role });
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: "Server error" });
             }
-            if (name) {
-                filter.name = { $regex: name, $options: 'i' };
+        });
+
+        app.get("/products", async (req, res) => {
+            const { category, name, id, sellerEmail } = req.query;
+            const filter = {};
+            if (sellerEmail) {
+                filter.sellerEmail = sellerEmail;
             }
-            if (id) {
-                filter._id = new ObjectId(id);
-            }
+            if (category) filter.category = category;
+            if (name) filter.name = { $regex: name, $options: "i" };
+            if (id) filter._id = new ObjectId(id);
+
             const result = await productsCollection.find(filter).toArray();
             res.send(result);
-        })
-        app.get('/products/:id', async (req, res) => {
-            const { id } = req.params;  // params থেকে id নিলাম
-            const result = await productsCollection.findOne({ _id: new ObjectId(id) });
+        });
+
+        app.get("/products/:id", async (req, res) => {
+            const { id } = req.params;
+            const result = await productsCollection.findOne({
+                _id: new ObjectId(id),
+            });
             res.send(result);
         });
-        app.post('/products', async (req, res) => {
+        app.get("/trackings", async (req, res) => {
+            const { orderId } = req.query;
+            try {
+                if (orderId) {
+                    trackings = await trackingsCollection.findOne({ orderId });
+                    if (!trackings) return res.status(404).send({ error: "Tracking not found" });
+                } else {
+                    trackings = await trackingsCollection.find({}).toArray();
+                }
+
+                res.send(trackings);
+            } catch (err) {
+                res.status(500).send({ error: "Something went wrong" });
+            }
+        });
+
+
+        app.get('/cartItems', async (req, res) => {
+            const email = req.query.email;
+            const filter = {};
+            if (email) {
+                filter.userEmail = email;
+            }
+            const result = await cartItemsCollection.find(filter).toArray();
+            res.send(result);
+        })
+
+        app.get("/orders/:id", async (req, res) => {
+            const { lastOrder, orderedBy } = req.query;
+            const id = req.params.id;
+
+
+            if (lastOrder) {
+                const result = await ordersCollection
+                    .find({ orderUser: lastOrder })
+                    .sort({ _id: -1 })
+                    .limit(1)
+                    .toArray();
+
+                return res.send(result[0] || null);
+            }
+
+            const filter = {};
+            if (id) {
+                const result = await ordersCollection.findOne({ _id: new ObjectId(id) });
+                res.send(result);
+                return;
+            }
+            if (orderedBy) {
+                filter.orderUser = orderedBy;
+            }
+
+            const orders = await ordersCollection.find(filter).sort({ _id: -1 }).toArray();
+            res.send(orders);
+        });
+
+        // Route: Get orders by seller email
+        app.get("/orders/seller/:email", async (req, res) => {
+            try {
+                const sellerEmail = req.params.email;
+
+                // Find all orders where items array contains this sellerEmail
+                const orders = await ordersCollection
+                    .find({ "items": { $elemMatch: { sellerEmail } } })
+                    .toArray();
+
+                // Filter items so seller sees only his own products
+                const filteredOrders = orders.map(order => ({
+                    ...order,
+                    items: order.items.filter(item => item.sellerEmail === sellerEmail),
+                }));
+
+                res.send(filteredOrders);
+            } catch (error) {
+                console.error("Error fetching seller orders:", error);
+                res.status(500).json({ message: "Internal Server Error" });
+            }
+        });
+
+
+
+
+        // 🔹 Create a new support issue
+        app.post("/issue", async (req, res) => {
+            const { name, email, message } = req.body;
+            if (!name || !email || !message)
+                return res.status(400).json({ error: "All fields are required" });
+
+            const supportIssue = {
+                name,
+                email,
+                message,
+                status: "Pending", // default status
+                createdAt: new Date(),
+            };
+
+            try {
+                const result = await supportIssueCollection.insertOne(supportIssue);
+                res.status(201).json({
+                    success: true,
+                    message: "Issue submitted successfully",
+                    insertedId: result.insertedId,
+                });
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ error: "Failed to save issue" });
+            }
+        });
+
+        // 🔹 Get all support issues
+        app.get("/issue", async (req, res) => {
+            try {
+                const issues = await supportIssueCollection
+                    .find({})
+                    .sort({ createdAt: -1 })
+                    .toArray();
+                res.send(issues);
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ error: "Failed to load issues" });
+            }
+        });
+
+        // 🔹 Update status of a support issue
+        app.patch("/issue/:id", async (req, res) => {
+            const { id } = req.params;
+            const { status } = req.body;
+
+            try {
+                const result = await supportIssueCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { status } }
+                );
+                res.json({ success: true, message: "Status updated successfully" });
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ error: "Failed to update status" });
+            }
+        });
+
+
+
+
+        app.post("/users", async (req, res) => {
+            const userData = req.body;
+            const existingUser = await usersCollection.findOne({
+                email: userData.email,
+            });
+            if (existingUser) {
+                return res.status(409).send({ message: "User already exists" });
+            }
+            const result = await usersCollection.insertOne(userData);
+            res.send(result);
+        });
+
+        app.post("/products", async (req, res) => {
             const data = req.body;
             const result = await productsCollection.insertOne(data);
             res.send(result);
+        });
+
+        app.post('/orders', async (req, res) => {
+            const orderData = req.body;
+            const result = await ordersCollection.insertOne(orderData);
+            res.send(result);
         })
-           app.post('/users', async (req, res) => {
-      const userData = req.body;
+        app.post('/trackings', async (req, res) => {
+            const orderData = req.body;
+            const result = await trackingsCollection.insertOne(orderData);
+            res.send(result);
+        })
 
-      // Optional: check if user already exists by email
-      const existingUser = await usersCollection.findOne({ email: userData.email });
-      if (existingUser) {
-        return res.status(409).send({ message: 'User already exists' });
-      }
+        app.post('/addToCart', async (req, res) => {
+            const cartItem = req.body;
+            const result = await cartItemsCollection.insertOne(cartItem);
+            res.send(result);
+        })
 
-      const result = await usersCollection.insertOne(userData);
-      res.send(result);
-    });
-       // ✅ Get all users
-    // app.get('/users', async (req, res) => {
-    //   const users = await usersCollection.find().toArray();
-    //   res.send(users);
-    // });
+        // ✅ Create Order and Initiate Payment
+        // app.post("/orders", async (req, res) => {
+        //   const tran_id = new ObjectId().toString();
+        //   const product = await productsCollection.findOne({
+        //     _id: new ObjectId(req.body.productId),
+        //   });
 
-    // ✅ Get single user by email or id
-    app.get('/users/:email', async (req, res) => {
-      const email = req.params.email;
-      const user = await usersCollection.findOne({ email });
-      res.send(user);
-    });
+        //   if (!product) {
+        //     return res.status(404).send({ message: "Product not found" });
+        //   }
 
-    app.put("/users/:email", async (req, res) => {
-  const email = req.params.email;
-  const updatedData = req.body;
-  const result = await usersCollection.updateOne(
-    { email },
-    { $set: updatedData }
-  );
-  res.send(result);
-});
+        //   const order = req.body;
+        //   const data = {
+        //     total_amount: order.totalAmount,
+        //     currency: "BDT",
+        //     tran_id: tran_id,
+        //     success_url: `http://localhost:5000/payment/success/${tran_id}`,
+        //     fail_url: `http://localhost:5000/payment/fail/${tran_id}`,
+        //     cancel_url: "http://localhost:3030/cancel",
+        //     ipn_url: "http://localhost:3030/ipn",
+        //     shipping_method: "Courier",
+        //     product_name: "Computer.",
+        //     product_category: "Electronic",
+        //     product_profile: "general",
+        //     cus_name: order.name,
+        //     cus_email: "customer@example.com",
+        //     cus_add1: order.address,
+        //     cus_add2: "Dhaka",
+        //     cus_city: "Dhaka",
+        //     cus_state: "Dhaka",
+        //     cus_postcode: "1000",
+        //     cus_country: "Bangladesh",
+        //     cus_phone: "01711111111",
+        //     cus_fax: "01711111111",
+        //     ship_name: "Customer Name",
+        //     ship_add1: "Dhaka",
+        //     ship_add2: "Dhaka",
+        //     ship_city: "Dhaka",
+        //     ship_state: "Dhaka",
+        //     ship_postcode: 1000,
+        //     ship_country: "Bangladesh",
+        //   };
 
-// Get a user's role by email
-app.get("/users/:email/role", async (req, res) => {
-  const email = req.params.email;
-  try {
-    const user = await usersCollection.findOne({ email });
-    if (!user) return res.status(404).send({ message: "User not found" });
+        //   const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+        //   sslcz.init(data).then((apiResponse) => {
+        //     let GatewayPageURL = apiResponse.GatewayPageURL;
+        //     res.send({ url: GatewayPageURL });
 
-    res.send({ role: user.role });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ message: "Server error" });
-  }
-});
+        //     const finalOrder = {
+        //       product,
+        //       paidStatus: false,
+        //       tranjectionId: tran_id,
+        //     };
+        //     ordersCollection.insertOne(finalOrder);
+        //     console.log("Redirecting to:", GatewayPageURL);
+        //   });
+        // });
+
+        app.post("/payment/success/:tranId", async (req, res) => {
+            const result = await ordersCollection.updateOne(
+                { tranjectionId: req.params.tranId },
+                { $set: { paidStatus: true } }
+            );
+            if (result.modifiedCount > 0) {
+                res.redirect(`http://localhost:3000/payment/paymentSuccess`);
+            }
+        });
+
+        app.post("/payment/fail/:tranId", async (req, res) => {
+            const result = await ordersCollection.deleteOne({
+                tranjectionId: req.params.tranId,
+            });
+            if (result.deletedCount) {
+                res.redirect(`http://localhost:3000/payment/paymentFail`);
+            }
+        });
 
 
-        // await client.db("admin").command({ ping: 1 });
-        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
+
+
+
+        app.put("/users/:email", async (req, res) => {
+            const email = req.params.email;
+            const updatedData = req.body;
+            const result = await usersCollection.updateOne(
+                { email },
+                { $set: updatedData }
+            );
+            res.send(result);
+        });
+
+        app.put("/products/:id", async (req, res) => {
+            const id = req.params.id;
+            console.log(id);
+
+            const data = req.body;
+            delete data._id;
+
+            const query = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: data,
+            }
+
+            const result = await productsCollection.updateOne(query, updatedDoc);
+            res.send(result);
+        })
+
+        app.patch("/tracking/update/:orderId", async (req, res) => {
+            try {
+                const orderId = req.params.orderId;
+                const { stepTitle } = req.body;
+                console.log(orderId, stepTitle);
+
+
+                const filter = { orderId: orderId };
+
+                // update object
+                const update = {
+                    $set: {
+                        "steps.$[elem].done": true,
+                        "steps.$[elem].date": new Date(),
+                        currentStatus: stepTitle,
+                    },
+                };
+
+                const options = {
+                    arrayFilters: [{ "elem.title": stepTitle }],
+                };
+
+                const result = await trackingsCollection.updateOne(filter, update, options);
+
+                res.send(result);
+
+            } catch (error) {
+                console.error("Error updating tracking:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Internal Server Error",
+                });
+            }
+        });
+
+
+
+        app.patch("/users/:id", async (req, res) => {
+            const id = req.params.id;
+            const { role } = req.body;
+            console.log(role);
+
+
+            const query = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: { role },
+            };
+
+            const result = await usersCollection.updateOne(query, updateDoc);
+            res.send(result);
+        });
+
+        app.patch("/gemPoints", async (req, res) => {
+            const { email, points } = req.body;
+            console.log(email, points);
+
+            try {
+                const user = await usersCollection.findOne({ email });
+                if (!user) return res.status(404).send({ error: "User not found" });
+
+                const newGemPoints = (user.gemPoints || 0) + points;
+
+                const result = await usersCollection.updateOne(
+                    { email },
+                    { $set: { gemPoints: newGemPoints } }
+                );
+
+                res.send(result);
+            } catch (err) {
+                res.status(500).send({ error: "Something went wrong" });
+            }
+        });
+
+
+
+
+
+
+        app.delete("/cartItems/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+
+            const result = await cartItemsCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.delete("/users/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await usersCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.delete("/products/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await productsCollection.deleteOne(query);
+            res.send(result);
+        });
+        app.delete("/orders/:id", async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await ordersCollection.deleteOne(query);
+            res.send(result);
+        });
+
+
+        console.log("✅ MongoDB connected successfully!");
     }
-
-async function run() {
-  try {
-    const database = client.db("smartShop");
-    const productsCollection = database.collection("products");
-    const ordersCollection = database.collection("orders");
-
-    app.post("/orders", async (req, res) => {
-      // console.log(req.body);
-      const tran_id = new ObjectId().toString();
-      const product = await productsCollection.findOne({
-        _id: new ObjectId(req.body.productId),
-      });
-       if (!product) {
-        return res.status(404).send({ message: "Product not found" });
-      }
-      const order = req.body;
-      //   console.log(order)
-      //   console.log(product);
-      const data = {
-        total_amount: order.totalAmount,
-        currency: "BDT",
-        tran_id: tran_id, // use unique tran_id for each api call
-        success_url: `http://localhost:5000/payment/success/${tran_id}`,
-        fail_url: `http://localhost:5000/payment/fail/${tran_id}`,
-        cancel_url: "http://localhost:3030/cancel",
-        ipn_url: "http://localhost:3030/ipn",
-        shipping_method: "Courier",
-        product_name: "Computer.",
-        product_category: "Electronic",
-        product_profile: "general",
-        cus_name: order.name,
-        cus_email: "customer@example.com",
-        cus_add1: order.address,
-        cus_add2: "Dhaka",
-        cus_city: "Dhaka",
-        cus_state: "Dhaka",
-        cus_postcode: "1000",
-        cus_country: "Bangladesh",
-        cus_phone: "01711111111",
-        cus_fax: "01711111111",
-        ship_name: "Customer Name",
-        ship_add1: "Dhaka",
-        ship_add2: "Dhaka",
-        ship_city: "Dhaka",
-        ship_state: "Dhaka",
-        ship_postcode: 1000,
-        ship_country: "Bangladesh",
-      };
-      // console.log(data);
-      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
-      sslcz.init(data).then((apiResponse) => {
-        // Redirect the user to payment gateway
-        let GatewayPageURL = apiResponse.GatewayPageURL;
-        res.send({ url: GatewayPageURL });
-
-        const finalOrder = {
-          product,
-          paidStatus: false,
-          tranjectionId: tran_id,
-        };
-        const result = ordersCollection.insertOne(finalOrder);
-
-        console.log("Redirecting to: ", GatewayPageURL);
-      });
-    });
-
-    app.post("/payment/success/:tranId", async (req, res) => {
-      console.log(req.params.tranId);
-      const result = await ordersCollection.updateOne(
-        {
-          tranjectionId: req.params.tranId,
-        },
-        {
-          $set: {
-            paidStatus: true,
-          },
-        }
-      );
-      console.log(result);
-      if (result.modifiedCount > 0) {
-        res.redirect(`http://localhost:3000/payment/paymentSuccess`);
-      }
-    });
-
-    app.post("/payment/fail/:tranId", async (req, res) => {
-      const result =await ordersCollection.deleteOne({
-        tranjectionId: req.params.tranId,
-      });
-      if (result.deletedCount) {
-        res.redirect(`http://localhost:3000/payment/paymentFail`);
-      }
-    });
-
-    app.get("/products", async (req, res) => {
-      const { category, name, id } = req.query;
-      const filter = {};
-
-      if (category) {
-        filter.category = category;
-      }
-      if (name) {
-        filter.name = { $regex: name, $options: "i" };
-      }
-      if (id) {
-        filter._id = new ObjectId(id);
-      }
-      const result = await productsCollection.find(filter).toArray();
-      res.send(result);
-    });
-    app.get("/products/:id", async (req, res) => {
-      const { id } = req.params; // params থেকে id নিলাম
-      const result = await productsCollection.findOne({
-        _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
-    app.post("/products", async (req, res) => {
-      const data = req.body;
-      const result = await productsCollection.insertOne(data);
-      res.send(result);
-      // console.log(data);
-    });
-
-    // await client.db("admin").command({ ping: 1 });
-    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
-  }
+    finally {
+        // Ensures that the client will close when you finish/error
+        // await client.close();
+    }
 }
+
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
-  res.send("Hello World!");
+    res.send("Hello World!");
 });
 
+// ✅ Start Server
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+    console.log(`Example app listening on port ${port}`)
+})
