@@ -38,6 +38,7 @@ async function run() {
         const ordersCollection = database.collection("orders");
         const cartItemsCollection = database.collection('cartItems');
         const trackingsCollection = database.collection("trackings");
+        const supportIssueCollection = database.collection("supportIssue");
 
         app.get("/users", async (req, res) => {
             const { email, searchEmail } = req.query;
@@ -165,6 +166,67 @@ async function run() {
             } catch (error) {
                 console.error("Error fetching seller orders:", error);
                 res.status(500).json({ message: "Internal Server Error" });
+            }
+        });
+
+
+
+
+        // 🔹 Create a new support issue
+        app.post("/issue", async (req, res) => {
+            const { name, email, message } = req.body;
+            if (!name || !email || !message)
+                return res.status(400).json({ error: "All fields are required" });
+
+            const supportIssue = {
+                name,
+                email,
+                message,
+                status: "Pending", // default status
+                createdAt: new Date(),
+            };
+
+            try {
+                const result = await supportIssueCollection.insertOne(supportIssue);
+                res.status(201).json({
+                    success: true,
+                    message: "Issue submitted successfully",
+                    insertedId: result.insertedId,
+                });
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ error: "Failed to save issue" });
+            }
+        });
+
+        // 🔹 Get all support issues
+        app.get("/issue", async (req, res) => {
+            try {
+                const issues = await supportIssueCollection
+                    .find({})
+                    .sort({ createdAt: -1 })
+                    .toArray();
+                res.send(issues);
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ error: "Failed to load issues" });
+            }
+        });
+
+        // 🔹 Update status of a support issue
+        app.patch("/issue/:id", async (req, res) => {
+            const { id } = req.params;
+            const { status } = req.body;
+
+            try {
+                const result = await supportIssueCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { status } }
+                );
+                res.json({ success: true, message: "Status updated successfully" });
+            } catch (err) {
+                console.error(err);
+                res.status(500).json({ error: "Failed to update status" });
             }
         });
 
@@ -312,6 +374,43 @@ async function run() {
             const result = await productsCollection.updateOne(query, updatedDoc);
             res.send(result);
         })
+
+        app.patch("/tracking/update/:orderId", async (req, res) => {
+            try {
+                const orderId = req.params.orderId;
+                const { stepTitle } = req.body;
+                console.log(orderId, stepTitle);
+
+
+                const filter = { orderId: orderId };
+
+                // update object
+                const update = {
+                    $set: {
+                        "steps.$[elem].done": true,
+                        "steps.$[elem].date": new Date(),
+                        currentStatus: stepTitle,
+                    },
+                };
+
+                const options = {
+                    arrayFilters: [{ "elem.title": stepTitle }],
+                };
+
+                const result = await trackingsCollection.updateOne(filter, update, options);
+
+                res.send(result);
+
+            } catch (error) {
+                console.error("Error updating tracking:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Internal Server Error",
+                });
+            }
+        });
+
+
 
         app.patch("/users/:id", async (req, res) => {
             const id = req.params.id;
